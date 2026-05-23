@@ -1,0 +1,6 @@
+pandas
+requests
+transformers
+torch
+sentencepiece
+tiktoken
