@@ -4,5 +4,6 @@ __pycache__/
 *.py[cod]
 .DS_Store
 output/
+restaurant_output/
 .venv/
 venv/

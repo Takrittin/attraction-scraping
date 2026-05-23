@@ -9,7 +9,8 @@ Setup:
     # Then put your real Google Places API key in .env.local
 
 Example:
-    python scrape_southern_thailand_attractions.py --output-dir output
+    python scrape_southern_thailand_attractions.py --category attractions
+    python scrape_southern_thailand_attractions.py --category restaurants
 
 Notes:
     - Google Places Details API returns only the reviews made available by
@@ -74,6 +75,39 @@ REVIEW_COLUMNS = [
 ]
 
 
+@dataclass(frozen=True)
+class CategoryConfig:
+    name: str
+    display_name: str
+    search_keyword: str
+    included_type: str
+    default_output_dir: str
+    raw_places_filename: str
+    summary_filename: str
+
+
+CATEGORY_CONFIGS = {
+    "attractions": CategoryConfig(
+        name="attractions",
+        display_name="tourist attractions",
+        search_keyword="tourist attractions",
+        included_type="tourist_attraction",
+        default_output_dir="output",
+        raw_places_filename="raw_attractions.csv",
+        summary_filename="attraction_summary.csv",
+    ),
+    "restaurants": CategoryConfig(
+        name="restaurants",
+        display_name="restaurants",
+        search_keyword="restaurants",
+        included_type="restaurant",
+        default_output_dir="restaurant_output",
+        raw_places_filename="raw_restaurants.csv",
+        summary_filename="restaurant_summary.csv",
+    ),
+}
+
+
 def load_env_file(path: Path = Path(".env.local")) -> None:
     """Load simple KEY=VALUE pairs from a local env file without extra dependencies."""
     if not path.exists():
@@ -117,7 +151,7 @@ SOUTHERN_PROVINCES = [
 def parse_args() -> argparse.Namespace:
     load_env_file()
     parser = argparse.ArgumentParser(
-        description="Scrape and analyze tourist attraction reviews in Southern Thailand."
+        description="Scrape and analyze Southern Thailand place reviews."
     )
     parser.add_argument(
         "--api-key",
@@ -126,8 +160,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default=".",
-        help="Directory where CSV files will be saved.",
+        default=None,
+        help=(
+            "Directory where CSV files will be saved. Defaults to output for "
+            "attractions and restaurant_output for restaurants."
+        ),
+    )
+    parser.add_argument(
+        "--category",
+        choices=sorted(CATEGORY_CONFIGS.keys()),
+        default="attractions",
+        help="Place category to scrape and analyze.",
     )
     parser.add_argument(
         "--max-pages-per-province",
@@ -150,8 +193,7 @@ def parse_args() -> argparse.Namespace:
         "--from-raw",
         action="store_true",
         help=(
-            "Skip Google API calls and load raw_attractions.csv/raw_reviews.csv "
-            "from --output-dir."
+            "Skip Google API calls and load raw category CSVs from --output-dir."
         ),
     )
     return parser.parse_args()
@@ -205,8 +247,9 @@ def fetch_places_for_province(
     language: str,
     max_pages: int,
     max_places: int | None,
+    category: CategoryConfig,
 ) -> list[dict[str, Any]]:
-    """Fetch tourist attraction candidates for one province using Text Search (New)."""
+    """Fetch place candidates for one province using Text Search (New)."""
     places: list[dict[str, Any]] = []
     seen_place_ids: set[str] = set()
     next_page_token: str | None = None
@@ -214,8 +257,8 @@ def fetch_places_for_province(
 
     while page < max_pages:
         body = {
-            "textQuery": f"tourist attractions in {province.name} Thailand",
-            "includedType": "tourist_attraction",
+            "textQuery": f"{category.search_keyword} in {province.name} Thailand",
+            "includedType": category.included_type,
             "languageCode": language,
             "pageSize": 20,
         }
@@ -435,6 +478,7 @@ def scrape_all_data(
     language: str,
     max_pages_per_province: int,
     max_places_per_province: int | None,
+    category: CategoryConfig,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Scrape places and reviews across all configured Southern Thailand provinces."""
     place_rows: list[dict[str, Any]] = []
@@ -442,7 +486,8 @@ def scrape_all_data(
 
     for index, province in enumerate(SOUTHERN_PROVINCES, start=1):
         print(
-            f"📍 Fetching {province.name} ({province.thai_name})... "
+            f"📍 Fetching {category.display_name} in "
+            f"{province.name} ({province.thai_name})... "
             f"({index}/{len(SOUTHERN_PROVINCES)} provinces)"
         )
         search_results = fetch_places_for_province(
@@ -451,6 +496,7 @@ def scrape_all_data(
             language=language,
             max_pages=max_pages_per_province,
             max_places=max_places_per_province,
+            category=category,
         )
         print(f"  Found {len(search_results)} place candidates.")
 
@@ -476,11 +522,11 @@ def scrape_all_data(
     return places_df, reviews_df
 
 
-def build_attraction_summary(
+def build_place_summary(
     places_df: pd.DataFrame,
     reviews_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build one summary row per attraction with review sentiment counts."""
+    """Build one summary row per place with review sentiment counts."""
     summary_columns = [
         "place_name",
         "province",
@@ -559,10 +605,19 @@ def build_attraction_summary(
     return summary_df[summary_columns]
 
 
+def build_attraction_summary(
+    places_df: pd.DataFrame,
+    reviews_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Backward-compatible wrapper for older code that imported this function."""
+    return build_place_summary(places_df, reviews_df)
+
+
 def save_outputs(
     reviews_df: pd.DataFrame,
     summary_df: pd.DataFrame,
     output_dir: Path,
+    summary_filename: str,
 ) -> None:
     """Save all requested CSV outputs with utf-8-sig encoding."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -572,7 +627,7 @@ def save_outputs(
         "positive_reviews.csv": reviews_df[reviews_df["sentiment"] == "positive"],
         "negative_reviews.csv": reviews_df[reviews_df["sentiment"] == "negative"],
         "neutral_reviews.csv": reviews_df[reviews_df["sentiment"] == "neutral"],
-        "attraction_summary.csv": summary_df,
+        summary_filename: summary_df,
     }
 
     for filename, dataframe in outputs.items():
@@ -585,10 +640,11 @@ def save_raw_checkpoint(
     places_df: pd.DataFrame,
     reviews_df: pd.DataFrame,
     output_dir: Path,
+    raw_places_filename: str,
 ) -> None:
     """Save raw scraped data before sentiment analysis starts."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    raw_places_path = output_dir / "raw_attractions.csv"
+    raw_places_path = output_dir / raw_places_filename
     raw_reviews_path = output_dir / "raw_reviews.csv"
     places_df.to_csv(raw_places_path, index=False, encoding="utf-8-sig")
     reviews_df.to_csv(raw_reviews_path, index=False, encoding="utf-8-sig")
@@ -596,9 +652,12 @@ def save_raw_checkpoint(
     print(f"💾 Saved {raw_reviews_path} ({len(reviews_df)} rows)")
 
 
-def load_raw_checkpoint(output_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_raw_checkpoint(
+    output_dir: Path,
+    raw_places_filename: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load previously scraped raw data to avoid repeating Google API calls."""
-    raw_places_path = output_dir / "raw_attractions.csv"
+    raw_places_path = output_dir / raw_places_filename
     raw_reviews_path = output_dir / "raw_reviews.csv"
 
     if not raw_places_path.exists() or not raw_reviews_path.exists():
@@ -626,10 +685,14 @@ def load_raw_checkpoint(output_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def main() -> None:
     args = parse_args()
-    output_dir = Path(args.output_dir)
+    category = CATEGORY_CONFIGS[args.category]
+    output_dir = Path(args.output_dir or category.default_output_dir)
 
     if args.from_raw:
-        places_df, reviews_df = load_raw_checkpoint(output_dir)
+        places_df, reviews_df = load_raw_checkpoint(
+            output_dir=output_dir,
+            raw_places_filename=category.raw_places_filename,
+        )
     elif not args.api_key:
         raise SystemExit(
             "Missing Google Places API key. Set GOOGLE_PLACES_API_KEY or pass --api-key."
@@ -640,13 +703,27 @@ def main() -> None:
             language=args.language,
             max_pages_per_province=args.max_pages_per_province,
             max_places_per_province=args.max_places_per_province,
+            category=category,
         )
-        save_raw_checkpoint(places_df, reviews_df, output_dir)
+        save_raw_checkpoint(
+            places_df=places_df,
+            reviews_df=reviews_df,
+            output_dir=output_dir,
+            raw_places_filename=category.raw_places_filename,
+        )
 
-    print(f"✅ Collected {len(places_df)} attractions and {len(reviews_df)} reviews.")
+    print(
+        f"✅ Collected {len(places_df)} {category.display_name} "
+        f"and {len(reviews_df)} reviews."
+    )
     reviews_df = add_sentiment_columns(reviews_df)
-    summary_df = build_attraction_summary(places_df, reviews_df)
-    save_outputs(reviews_df, summary_df, output_dir)
+    summary_df = build_place_summary(places_df, reviews_df)
+    save_outputs(
+        reviews_df=reviews_df,
+        summary_df=summary_df,
+        output_dir=output_dir,
+        summary_filename=category.summary_filename,
+    )
     print("✅ Done.")
 
 
