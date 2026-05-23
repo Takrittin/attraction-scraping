@@ -15,6 +15,8 @@ Example:
 Notes:
     - Google Places Details API returns only the reviews made available by
       Google for a place, often up to 5 reviews per place.
+    - Raw checkpoint files are saved under raw/.
+    - Sentiment-labeled outputs and summaries are saved under cleaned/.
     - CSV files are written with utf-8-sig encoding for Thai compatibility.
 """
 
@@ -162,8 +164,8 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default=None,
         help=(
-            "Directory where CSV files will be saved. Defaults to output for "
-            "attractions and restaurant_output for restaurants."
+            "Base directory where raw/ and cleaned/ folders will be saved. "
+            "Defaults to output for attractions and restaurant_output for restaurants."
         ),
     )
     parser.add_argument(
@@ -652,19 +654,35 @@ def save_raw_checkpoint(
     print(f"💾 Saved {raw_reviews_path} ({len(reviews_df)} rows)")
 
 
+def find_raw_checkpoint_paths(
+    output_dir: Path,
+    raw_places_filename: str,
+) -> tuple[Path, Path]:
+    """Find raw checkpoint files, with fallback support for the old root layout."""
+    candidates = [
+        (output_dir / "raw" / raw_places_filename, output_dir / "raw" / "raw_reviews.csv"),
+        (output_dir / raw_places_filename, output_dir / "raw_reviews.csv"),
+    ]
+
+    for raw_places_path, raw_reviews_path in candidates:
+        if raw_places_path.exists() and raw_reviews_path.exists():
+            return raw_places_path, raw_reviews_path
+
+    expected_paths = " or ".join(
+        f"{places_path} and {reviews_path}" for places_path, reviews_path in candidates
+    )
+    raise SystemExit(f"Raw checkpoint files were not found. Expected {expected_paths}.")
+
+
 def load_raw_checkpoint(
     output_dir: Path,
     raw_places_filename: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load previously scraped raw data to avoid repeating Google API calls."""
-    raw_places_path = output_dir / raw_places_filename
-    raw_reviews_path = output_dir / "raw_reviews.csv"
-
-    if not raw_places_path.exists() or not raw_reviews_path.exists():
-        raise SystemExit(
-            "Raw checkpoint files were not found. Expected "
-            f"{raw_places_path} and {raw_reviews_path}."
-        )
+    raw_places_path, raw_reviews_path = find_raw_checkpoint_paths(
+        output_dir=output_dir,
+        raw_places_filename=raw_places_filename,
+    )
 
     places_df = pd.read_csv(raw_places_path, encoding="utf-8-sig")
     reviews_df = pd.read_csv(raw_reviews_path, encoding="utf-8-sig")
@@ -687,6 +705,8 @@ def main() -> None:
     args = parse_args()
     category = CATEGORY_CONFIGS[args.category]
     output_dir = Path(args.output_dir or category.default_output_dir)
+    raw_output_dir = output_dir / "raw"
+    cleaned_output_dir = output_dir / "cleaned"
 
     if args.from_raw:
         places_df, reviews_df = load_raw_checkpoint(
@@ -708,7 +728,7 @@ def main() -> None:
         save_raw_checkpoint(
             places_df=places_df,
             reviews_df=reviews_df,
-            output_dir=output_dir,
+            output_dir=raw_output_dir,
             raw_places_filename=category.raw_places_filename,
         )
 
@@ -721,7 +741,7 @@ def main() -> None:
     save_outputs(
         reviews_df=reviews_df,
         summary_df=summary_df,
-        output_dir=output_dir,
+        output_dir=cleaned_output_dir,
         summary_filename=category.summary_filename,
     )
     print("✅ Done.")
