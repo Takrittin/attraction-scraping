@@ -1,14 +1,27 @@
-# Southern Thailand Attractions & Restaurants Scraper
+# Places API Attractions & Restaurants Scraper
 
-This Python script uses the Google Places API (New) to scrape, clean, and process data for tourist attractions and restaurants across 14 provinces in Southern Thailand. It automatically handles pagination, rate-limiting, and categorizes reviews for easy downstream analysis.
+This Python script uses the Google Places API (New) to scrape, clean, and process data for tourist attractions and restaurants across predefined regions. While initially configured for provinces in Thailand, you can easily modify it to search anywhere in the world. It automatically handles pagination, rate-limiting, and categorizes reviews for easy downstream analysis.
 
 ## Features
 
-- **Automated Scraping:** Fetches places and reviews for 14 Southern Thailand provinces.
+- **Automated Scraping:** Fetches places and reviews for target regions (easily customizable in the script).
 - **Two Categories:** Supports scraping both `attractions` and `restaurants`.
 - **Review Categorization:** Splits reviews into `positive`, `neutral`, and `negative` CSV files based on star ratings.
 - **Data Summarization:** Generates a clean summary file containing coordinates (lat/lng), average ratings, and review counts—perfect for mapping and distance calculations.
 - **Local Cache:** Can re-process local raw data without making additional expensive API calls using the `--from-raw` flag.
+
+## Customizing Locations
+
+To scrape data for a different country, state, or region, simply open the Python script (`scrape_southern_thailand_attractions.py`) and modify the `SOUTHERN_PROVINCES` list near the top of the file with your desired areas:
+
+```python
+# Change these to your desired search areas!
+SOUTHERN_PROVINCES = [
+    Province("Tokyo", "โตเกียว"),
+    Province("Osaka", "โอซาก้า"),
+    # Add any city, state, or region here!
+]
+```
 
 ## Prerequisites
 
