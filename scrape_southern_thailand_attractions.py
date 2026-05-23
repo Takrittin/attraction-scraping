@@ -94,7 +94,7 @@ CATEGORY_CONFIGS = {
         display_name="tourist attractions",
         search_keyword="tourist attractions",
         included_type="tourist_attraction",
-        default_output_dir="output",
+        default_output_dir="attraction_output",
         raw_places_filename="raw_attractions.csv",
         summary_filename="attraction_summary.csv",
     ),
@@ -165,7 +165,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Base directory where raw/ and cleaned/ folders will be saved. "
-            "Defaults to output for attractions and restaurant_output for restaurants."
+            "Defaults to attraction_output for attractions and restaurant_output for restaurants."
         ),
     )
     parser.add_argument(
