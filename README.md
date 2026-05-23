@@ -26,7 +26,7 @@ SOUTHERN_PROVINCES = [
 ## Prerequisites
 
 - Python 3.8+
-- [Google Places API Key](https://developers.google.com/maps/documentation/places/web-service/get-api-key) (with Places API (New) enabled)
+- [Google Places API Key](https://console.cloud.google.com/apis) (with Places API (New) enabled)
 - Required Python packages: `requests`, `pandas` (or install via requirements.txt)
 
 ```bash
