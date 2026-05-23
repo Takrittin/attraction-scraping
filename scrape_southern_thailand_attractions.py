@@ -146,6 +146,14 @@ def parse_args() -> argparse.Namespace:
         default="th",
         help="Preferred language for Google Places results and reviews.",
     )
+    parser.add_argument(
+        "--from-raw",
+        action="store_true",
+        help=(
+            "Skip Google API calls and load raw_attractions.csv/raw_reviews.csv "
+            "from --output-dir."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -321,7 +329,7 @@ def load_sentiment_model() -> tuple[Any, Any, Any, Any]:
     except Exception as exc:
         raise SystemExit(
             "Failed to load the HuggingFace tokenizer. Install tokenizer dependencies "
-            "with: python3 -m pip install sentencepiece tiktoken"
+            "with: python3 -m pip install sentencepiece tiktoken protobuf"
         ) from exc
 
     model = AutoModelForSequenceClassification.from_pretrained(SENTIMENT_MODEL_NAME)
@@ -588,23 +596,54 @@ def save_raw_checkpoint(
     print(f"💾 Saved {raw_reviews_path} ({len(reviews_df)} rows)")
 
 
+def load_raw_checkpoint(output_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load previously scraped raw data to avoid repeating Google API calls."""
+    raw_places_path = output_dir / "raw_attractions.csv"
+    raw_reviews_path = output_dir / "raw_reviews.csv"
+
+    if not raw_places_path.exists() or not raw_reviews_path.exists():
+        raise SystemExit(
+            "Raw checkpoint files were not found. Expected "
+            f"{raw_places_path} and {raw_reviews_path}."
+        )
+
+    places_df = pd.read_csv(raw_places_path, encoding="utf-8-sig")
+    reviews_df = pd.read_csv(raw_reviews_path, encoding="utf-8-sig")
+
+    for column in PLACE_COLUMNS:
+        if column not in places_df.columns:
+            places_df[column] = pd.NA
+    for column in REVIEW_COLUMNS:
+        if column not in reviews_df.columns:
+            reviews_df[column] = pd.NA
+
+    places_df = places_df[PLACE_COLUMNS]
+    reviews_df = reviews_df[REVIEW_COLUMNS]
+    print(f"📂 Loaded {raw_places_path} ({len(places_df)} rows)")
+    print(f"📂 Loaded {raw_reviews_path} ({len(reviews_df)} rows)")
+    return places_df, reviews_df
+
+
 def main() -> None:
     args = parse_args()
-    if not args.api_key:
+    output_dir = Path(args.output_dir)
+
+    if args.from_raw:
+        places_df, reviews_df = load_raw_checkpoint(output_dir)
+    elif not args.api_key:
         raise SystemExit(
             "Missing Google Places API key. Set GOOGLE_PLACES_API_KEY or pass --api-key."
         )
-    output_dir = Path(args.output_dir)
-
-    places_df, reviews_df = scrape_all_data(
-        api_key=args.api_key,
-        language=args.language,
-        max_pages_per_province=args.max_pages_per_province,
-        max_places_per_province=args.max_places_per_province,
-    )
+    else:
+        places_df, reviews_df = scrape_all_data(
+            api_key=args.api_key,
+            language=args.language,
+            max_pages_per_province=args.max_pages_per_province,
+            max_places_per_province=args.max_places_per_province,
+        )
+        save_raw_checkpoint(places_df, reviews_df, output_dir)
 
     print(f"✅ Collected {len(places_df)} attractions and {len(reviews_df)} reviews.")
-    save_raw_checkpoint(places_df, reviews_df, output_dir)
     reviews_df = add_sentiment_columns(reviews_df)
     summary_df = build_attraction_summary(places_df, reviews_df)
     save_outputs(reviews_df, summary_df, output_dir)
