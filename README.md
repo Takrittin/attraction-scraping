@@ -121,6 +121,96 @@ It creates:
 python create_review_embeddings.py --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --batch-size 64
 ```
 
+### English Place Summary Embeddings
+
+If you want English-only place vectors, summarize all reviews for each place
+into one English summary of 40 words or fewer, then embed those summaries with
+`sentence-transformers/all-MiniLM-L6-v2`:
+
+```bash
+python create_english_review_embeddings.py
+```
+
+This command reads both cleaned review files, creates one
+`english_40word_summary` row per place, and writes:
+
+- `embeddings/place_metadata_english_40words.parquet`
+- `embeddings/place_embeddings_english_40words.npy`
+- `embeddings/manifest_place_english_40words.json`
+
+The default summarization provider is Vertex AI with `gemini-2.5-flash-lite`.
+This is recommended when you are using Google Cloud Platform instead of Google
+AI Studio. It uses your active `gcloud` login and Google Cloud project billing,
+not a Gemini API key from AI Studio.
+
+First, make sure you are logged in to Google Cloud:
+
+```bash
+gcloud auth login
+gcloud config set project your_google_cloud_project_id
+```
+
+Then add your project settings to `.env.local`:
+
+```env
+VERTEX_PROJECT_ID=your_google_cloud_project_id
+VERTEX_LOCATION=us-central1
+```
+
+To test the pipeline on a few places before running the full dataset:
+
+```bash
+python create_english_review_embeddings.py --limit 20
+```
+
+You can also run the work in two separate stages.
+
+Stage 1 creates only the place summaries and saves the metadata file:
+
+```bash
+python create_english_review_embeddings.py --skip-embedding --transform-batch-size 10
+```
+
+Stage 2 uses the saved summaries and creates only the vector files:
+
+```bash
+python create_english_review_embeddings.py --summary-provider existing --embedding-batch-size 128
+```
+
+Use the two-stage flow when you want to inspect or share the summaries before
+creating vectors, or when you want to avoid calling Gemini again.
+
+For a small two-stage test, keep the same `--limit` in both commands:
+
+```bash
+python create_english_review_embeddings.py --limit 20 --skip-embedding --transform-batch-size 5
+python create_english_review_embeddings.py --limit 20 --summary-provider existing --embedding-batch-size 128
+```
+
+By default, each place summary uses up to 20 review texts from that place. You
+can increase or decrease that sample size:
+
+```bash
+python create_english_review_embeddings.py --max-reviews-per-place 30
+```
+
+If you want to use the Google AI Studio Gemini API instead of Vertex AI, pass
+`--summary-provider gemini` and add `GEMINI_API_KEY` to `.env.local`.
+
+The script saves summary checkpoints as it runs. If it stops midway, run the
+same command again and it will reuse already-created summaries.
+
+If you prefer a local Hugging Face translation model instead of an LLM API, you
+can run:
+
+```bash
+python create_english_review_embeddings.py --summary-provider transformers
+```
+
+That fallback translates Thai text with `Helsinki-NLP/opus-mt-th-en`, then trims
+the translated text to 40 words. Gemini is recommended when you need better
+summaries, because it translates and summarizes in one step.
+
 ## Streamlit Dashboard
 
 Run the dashboard after generating embeddings:

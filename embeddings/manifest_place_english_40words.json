@@ -1,0 +1,19 @@
+{
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "summary_provider": "existing",
+  "vertex_project_id": null,
+  "vertex_location": null,
+  "gemini_model": null,
+  "translation_model": null,
+  "summary_level": "place",
+  "text_column": "english_40word_summary",
+  "max_words": 40,
+  "max_reviews_per_place": 20,
+  "embedding_dim": 384,
+  "review_count": 5668,
+  "place_count": 1164,
+  "created_at": "2026-05-26T16:20:33.493466+00:00",
+  "metadata_file": "place_metadata_english_40words.parquet",
+  "embeddings_file": "place_embeddings_english_40words.npy",
+  "normalized": true
+}
