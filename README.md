@@ -1,6 +1,6 @@
 # Places API Review Scraper and Embedding Dashboard
 
-This project uses the Google Places API (New) to scrape, clean, and process attraction and restaurant review data. It also includes a sentence embedding pipeline and a Streamlit dashboard for semantic review search.
+This project uses the Google Places API (New) to scrape, clean, and process attraction and restaurant review data. It also includes a place-summary embedding pipeline and a Streamlit dashboard for semantic place search.
 
 The default data target is southern Thailand, but you can modify the province list and search terms to collect places from other regions.
 
@@ -11,7 +11,7 @@ The default data target is southern Thailand, but you can modify the province li
 - **Review Categorization:** Splits reviews into `positive`, `neutral`, and `negative` CSV files based on star ratings.
 - **Data Summarization:** Generates a clean summary file containing coordinates (lat/lng), average ratings, and review counts—perfect for mapping and distance calculations.
 - **Local Cache:** Can re-process local raw data without making additional expensive API calls using the `--from-raw` flag.
-- **Sentence Embeddings:** Converts review text into semantic vectors using multilingual models such as `BAAI/bge-m3`.
+- **Place Summary Embeddings:** Summarizes all reviews for each place into one short English description, then converts each place summary into a semantic vector.
 - **Streamlit Dashboard:** Provides semantic search, filters, charts, matching-place summaries, and an embedding map.
 
 ## Customizing Locations
@@ -63,11 +63,11 @@ pip install -r requirements.txt
 
 2. Scrape or process review data.
 
-3. Generate sentence embeddings.
+3. Generate English place summary embeddings.
 
 4. Run the Streamlit dashboard.
 
-5. Search reviews by meaning.
+5. Search places by meaning.
 
 ### 1. Scrape Attractions (Default)
 Run the script without any arguments to scrape attractions. The data will be saved in the `attraction_output/` folder.
@@ -96,32 +96,7 @@ python scrape_southern_thailand_attractions.py --help
 - `--language`: Set the preferred language for results (Default is `th`).
 - `--output-dir`: Override the default output directory.
 
-## Sentence Embeddings
-
-Generate sentence embeddings from cleaned reviews:
-
-```bash
-python create_review_embeddings.py --model BAAI/bge-m3 --batch-size 16
-```
-
-The script reads:
-
-- `restaurant_output/cleaned/all_reviews.csv`
-- `attraction_output/cleaned/all_reviews.csv`
-
-It creates:
-
-- `embeddings/review_embeddings.npy`
-- `embeddings/review_metadata.parquet`
-- `embeddings/manifest.json`
-
-`BAAI/bge-m3` is recommended for better multilingual Thai/English search quality. If you want a faster lightweight test model, you can use:
-
-```bash
-python create_review_embeddings.py --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --batch-size 64
-```
-
-### English Place Summary Embeddings
+## English Place Summary Embeddings
 
 If you want English-only place vectors, summarize all reviews for each place
 into one English summary of 40 words or fewer, then embed those summaries with
@@ -213,7 +188,7 @@ summaries, because it translates and summarizes in one step.
 
 ## Streamlit Dashboard
 
-Run the dashboard after generating embeddings:
+Run the dashboard after generating place summary embeddings:
 
 ```bash
 streamlit run streamlit_app.py --server.fileWatcherType none
@@ -227,9 +202,8 @@ http://localhost:8501
 
 The dashboard supports:
 
-- Semantic review search
+- Semantic place search
 - Category, province, sentiment, and rating filters
-- Top matching review results
 - Top matching place summaries
 - Rating and sentiment charts
 - 2D embedding map
@@ -250,13 +224,15 @@ Example search queries:
 
 ## Updating Embeddings After New Reviews
 
-If new reviews are added, run the embedding command again:
+If new reviews are added, rerun the two-stage place summary pipeline:
 
 ```bash
-python create_review_embeddings.py --model BAAI/bge-m3 --batch-size 16
+python create_english_review_embeddings.py --skip-embedding --transform-batch-size 10
+python create_english_review_embeddings.py --summary-provider existing --embedding-batch-size 128
 ```
 
-The current script regenerates all embeddings. This is simple and safe for the current dataset size. For a much larger dataset, you can add an incremental update script later to embed only new reviews and append them to the saved vector files.
+The script reuses existing place summaries when possible. Use
+`--force-transform` only when you want to regenerate every place summary.
 
 ## Output Structure
 
@@ -265,7 +241,7 @@ The project generates well-organized data ready for mapping, analysis, semantic 
 ```text
 .
 ├── scrape_southern_thailand_attractions.py
-├── create_review_embeddings.py
+├── create_english_review_embeddings.py
 ├── streamlit_app.py
 ├── attraction_output/ (or restaurant_output/)
 │   ├── raw/
@@ -278,9 +254,9 @@ The project generates well-organized data ready for mapping, analysis, semantic 
 │       ├── neutral_reviews.csv      # Reviews with 3 stars
 │       └── negative_reviews.csv     # Reviews with 1-2 stars
 └── embeddings/
-    ├── review_embeddings.npy        # Sentence embedding matrix
-    ├── review_metadata.parquet      # Review rows aligned with the vectors
-    └── manifest.json                # Model name and embedding metadata
+    ├── place_embeddings_english_40words.npy       # Place summary vectors
+    ├── place_metadata_english_40words.parquet     # Place rows aligned with vectors
+    └── manifest_place_english_40words.json        # Embedding metadata
 ```
 
 For restaurants, the same structure is generated in `restaurant_output/`:
