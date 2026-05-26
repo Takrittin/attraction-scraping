@@ -1,7 +1,12 @@
 pandas
 requests
+streamlit
+sentence-transformers
 transformers
 torch
 sentencepiece
 tiktoken
 protobuf
+scikit-learn
+plotly
+pyarrow

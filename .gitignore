@@ -8,3 +8,4 @@ restaurant_output/
 .venv/
 venv/
 attraction_output/
+embeddings/
